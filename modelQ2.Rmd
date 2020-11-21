@@ -1,0 +1,575 @@
+---
+title: "modelQ2"
+author: "u1814083"
+date: "16/11/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(dplyr)
+library(readxl)
+CovidData <- read.csv("tidycovid19.csv")
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(lubridate)
+CovidData$date = as.Date(parse_date_time(CovidData$date,orders=c("y","ym","ymd")))
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(dplyr)
+library(stringr)
+europeData <- {CovidData %>%
+    filter((str_detect(region, "Europe") ) & (date > as.Date("2020-02-06")))%>%
+    select(country,date, mov_rest, pub_health, gov_soc_econ, lockdown, apple_mtr_walking, gcmr_retail_recreation, gcmr_grocery_pharmacy, gcmr_workplaces, gdp_capita)}
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(ggplot2)
+
+plot1 <- {europeData %>%
+            filter(country == c("United Kingdom", "Sweden", "Italy", "Hungary", "Serbia")) %>% 
+              ggplot(aes(x = date,y = mov_rest))} +
+              geom_jitter(aes(color=country))+
+              geom_smooth(method = lm, formula = y ~ splines::bs(x, df=6), se = FALSE, aes(color=country))+
+              xlab("Date") +
+              theme(axis.text.x = element_text(angle = 90))+
+              ggtitle("Hungary declared a state of emergency open-ended,\ncurfew measures until further notice since March 17") +
+              scale_x_date(date_breaks = "months", date_labels = "%b-%y")
+
+histPlot1 <- {europeData %>% ggplot()} +
+    geom_histogram(aes(x=mov_rest), binwidth = 0.5)
+
+boxPlot1 <- {europeData %>% ggplot()} +
+    geom_boxplot(aes(x=mov_rest), binwidth = 0.5)
+```
+
+```{r,include = FALSE,message=FALSE, echo=FALSE, warning=FALSE}
+library("gridExtra")
+grid.arrange(plot1,histPlot1,boxPlot1,ncol=2, top="variation within move_rest")
+#plot(plot1)
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE, include=FALSE}
+data0 <- {europeData %>% 
+    filter( country == c("Hungary") & (date > as.Date("2020-02-06")) & (date < as.Date("2020-03-24")) )}
+
+library(ggplot2)
+plot0 <- {data0 %>% ggplot(aes(x = date, y = mov_rest))} + 
+  geom_point()
+print(plot0)
+```
+
+```{r, warning=FALSE, echo=FALSE, results='hide', include=FALSE}
+library(MASS)
+negative_binomial_fit <- glm.nb(mov_rest ~ 1 + date, data = data0)
+summary(negative_binomial_fit)
+```
+
+
+```{r, warning=FALSE, echo=FALSE, results='hide', include=FALSE}
+pred_negative_binomial = predict(negative_binomial_fit)
+
+early_plot_log_mov_rest <- {data0 %>% ggplot(aes(x = date,
+                                                y = log(mov_rest)))} +
+  geom_point() +
+  geom_line(aes(y = pred_negative_binomial), size = 1)
+print(early_plot_log_mov_rest)
+```
+
+
+
+```{r, warning=FALSE, echo=FALSE, results='hide', include=FALSE}
+early_plot_log_mov_rest <- {data0 %>% ggplot(aes(x = date,y = mov_rest))} +
+  geom_point() +
+  geom_line(aes(y = exp(pred_negative_binomial)), size = 1)
+
+print(early_plot_log_mov_rest)
+```
+
+
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE, results='hide', include=FALSE}
+CaseData <- {CovidData %>% 
+    filter( country == c("Hungary"),
+            (date > as.Date("2020-02-23")) & (date < as.Date("2020-07-11")) )}
+FirstWaveData <- CaseData %>%
+  mutate(date = yday(date))
+
+skewed_fit <- glm.nb(mov_rest ~ 1 + date + I(date^2) + I(log(date)), data = FirstWaveData)
+
+summary(skewed_fit)
+```
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE}
+pred_skewed = predict(skewed_fit)
+
+skewed_plot_log_mov_rest <- {FirstWaveData %>% ggplot(aes(x = date,
+                                                y = (mov_rest)))} +
+  geom_point() +
+  geom_line(aes(y = exp(pred_skewed)), size = 1) +
+  labs(x = "time/day", y = "mov_rest",
+       title = "Number of movement restrictions in Hungary in first wave",
+       subtitle = "Data Source: tidycovid19") 
+print(skewed_plot_log_mov_rest)
+```
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+library(splines)
+
+splines_fit <- glm.nb(mov_rest ~ 1 + ns(date, knots = c(60,100,140,180)), data = FirstWaveData)
+pred_splines= predict(splines_fit)
+summary(splines_fit)
+```
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+splines_plot_log_mov_rest <- {FirstWaveData %>% ggplot(aes(x = date,
+                                                y = (mov_rest)))} +
+  geom_point() +
+  geom_line(aes(y = exp(pred_splines)), size = 1)
+print(splines_plot_log_mov_rest)
+```
+
+# Predictor variables
+## date/ movement restriction
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+plot_nb <- function(Country = "United Kindom", 
+                    dates = c("2020-02-23","2020-09-23"),
+                    x = "date",
+                    y = "mov_rest",
+                    result = ""){
+  # get the dataset
+  CaseData <- {CovidData %>% 
+    filter( country == Country,
+            (date > as.Date(dates[1])) & (date < as.Date(dates[2])) )}
+  FirstWaveData <- CaseData %>%
+  mutate(date = yday(date))
+
+  skewed_fit <- glm.nb(mov_rest ~ 1 + date + I(date^2) + I(log(date)), data = FirstWaveData)
+  
+  
+  pred_skewed = predict(skewed_fit)
+  
+  skewed_plot_log_mov_rest <- {FirstWaveData %>% ggplot(aes(x = date,
+                                                y = (mov_rest)))} +
+  geom_point() +
+  geom_line(aes(y = exp(pred_skewed)), size = 1) +
+  #scale_x_date(date_breaks = "months", date_labels = "%b-%y") +
+  labs(x = "time/day", y = "mov_rest",
+       title = Country,
+       subtitle = "Data Source: tidycovid19") 
+  if (result == "model"){
+    return(skewed_fit)
+  } else{
+    return(skewed_plot_log_mov_rest)
+  }
+}
+```
+
+
+```{r, fig.width=10, fig.height=8,warning=FALSE, message=FALSE, echo=FALSE}
+library("gridExtra")
+grid.arrange(plot_nb("Hungary"),
+             plot_nb("Italy"),
+             plot_nb("Serbia"), 
+             #plot_nb("United Kingdom"),
+             plot_nb("Sweden"),
+             ncol=2, top="Number of movement restrictions")
+```
+
+```{r, warning=FALSE, echo=FALSE}
+model.Hungary<- plot_nb("Hungary", result = "model")
+model.Italy <- plot_nb("Italy", result = "model")
+model.Serbia <- plot_nb("Serbia",result = "model")
+model.UK <- plot_nb("United Kingdom",result = "model")
+model.Sweden <- plot_nb("Sweden",result = "model")
+```
+
+
+```{r, echo=FALSE, message=FALSE}
+library(knitr)
+
+sig <- 4
+tab <- round(summary(model.Hungary)$coefficients[,1], sig)
+tab <- rbind(tab,round(summary(model.Italy)$coefficients[,1], sig))
+tab <- rbind(tab,round(summary(model.Serbia)$coefficients[,1], sig))
+tab <- rbind(tab,round(summary(model.UK)$coefficients[,1], sig))
+tab <- rbind(tab,round(summary(model.Sweden)$coefficients[,1], sig))
+
+#kable(cbind(tab,c("Hungary","Italy","Serbia","United Kingdom","Sweden")))
+kable(cbind(tab,c("Hungary","Italy","Serbia","United Kingdom","Sweden"),
+            round(c(AIC(model.Hungary),
+              AIC(model.Italy),
+              AIC(model.Serbia),
+              AIC(model.UK),
+              AIC(model.Sweden)),2)
+            ))
+```
+
+
+## date - pub_health
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+plot_nb2 <- function(Country = "United Kindom", 
+                    dates = c("2020-02-23","2020-09-23"),
+                    x_name = "date",
+                    y_name = "pub_health",
+                    result = ""){
+  # get the dataset
+  CaseData <- {CovidData %>% 
+    filter( country == Country,
+            (date > as.Date(dates[1])) & (date < as.Date(dates[2])) )}
+  FirstWaveData <- CaseData %>%
+  mutate(date = yday(date))
+
+  skewed_fit <- glm.nb(FirstWaveData[,y_name] ~ 1 + date + 
+                         I(date^2) + 
+                         I(log(date)), data = FirstWaveData)
+  
+  
+  pred_skewed = predict(skewed_fit)
+  
+  skewed_plot_log_mov_rest <- {FirstWaveData %>% 
+      ggplot(aes(x = FirstWaveData[,x_name],y = (FirstWaveData[,y_name])))} +
+  geom_point() +
+  geom_line(aes(y = exp(pred_skewed)), size = 1) +
+  labs(x = "time/day", y = y_name,
+       title = Country
+       #subtitle = "Data Source: tidycovid19"
+       ) 
+  if (result == "model"){
+    return(skewed_fit)
+  } else{
+    return(skewed_plot_log_mov_rest)
+  }
+}
+```
+
+```{r, fig.width=10, fig.height=8,warning=FALSE, message=FALSE, echo=FALSE}
+library("gridExtra")
+grid.arrange(plot_nb2("Hungary"),
+             plot_nb2("Italy"),
+             plot_nb2("Serbia"), 
+             plot_nb2("United Kingdom"),
+             plot_nb2("Sweden"),
+             ncol=2, top="Number of public health measures")
+```
+
+```{r, warning=FALSE, echo=FALSE}
+model.Hungary<- plot_nb2("Hungary", result = "model")
+model.Italy <- plot_nb2("Italy", result = "model")
+model.Serbia <- plot_nb2("Serbia",result = "model")
+model.UK <- plot_nb2("United Kingdom",result = "model")
+model.Sweden <- plot_nb2("Sweden",result = "model")
+```
+
+
+```{r, warning=FALSE, echo=FALSE}
+
+sig <- 6
+tab <- round(summary(model.Hungary)$coefficients[,1], sig)
+tab <- rbind(tab,round(summary(model.Italy)$coefficients[,1], sig))
+tab <- rbind(tab,round(summary(model.Serbia)$coefficients[,1], sig))
+tab <- rbind(tab,round(summary(model.UK)$coefficients[,1], sig))
+tab <- rbind(tab,round(summary(model.Sweden)$coefficients[,1], sig))
+
+kable(cbind(tab,c("Hungary","Italy","Serbia","United Kingdom","Sweden"),
+            round(c(AIC(model.Hungary),
+              AIC(model.Italy),
+              AIC(model.Serbia),
+              AIC(model.UK),
+              AIC(model.Sweden)),2)
+            ))
+```
+```{r}
+AIC(model.Hungary)
+```
+
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+Country <- "Serbia"
+dates = c("2020-02-23","2020-09-23")
+CaseData <- {CovidData %>% 
+    filter( country == Country,
+            (date > as.Date(dates[1])) & (date < as.Date(dates[2])) )}
+  FirstWaveData <- CaseData %>%
+  mutate(date = yday(date))
+
+  #skewed_fit <- glm.nb(pub_health ~ 1 + date + I(date^2) + I(log(date)), data = FirstWaveData)
+
+glm.min <- glm.nb(pub_health ~ 1 + date, data = FirstWaveData)
+glm.max <- glm.nb(pub_health ~ 1 + date + I(date^2) + I(log(date)), data = FirstWaveData)
+
+
+
+auto.backward <- step(glm.max, direction="backward", trace = 0, 
+                      scope=list("lower"=glm.min))
+auto.backward$call
+
+auto.forward <- step(glm.min, direction="forward", trace = 0,
+                     scope=list("upper"=glm.max))
+auto.forward$call
+
+auto.both <- step(model.Hungary, direction="both",
+                  scope=list("lower"=glm.min, "upper"=glm.max))
+auto.both$call
+
+AIC(auto.backward)
+AIC(auto.forward)
+AIC(auto.both)
+```
+
+```{r, echo=FALSE, message=FALSE, warning=FALSE}
+auto.forward
+```
+
+## gov_soc_econ
+
+```{r, fig.width=10, fig.height=8,warning=FALSE, message=FALSE, echo=FALSE}
+library("gridExtra")
+grid.arrange(plot_nb2("Hungary", y_name = "gov_soc_econ"),
+             plot_nb2("Italy", y_name = "gov_soc_econ"),
+             plot_nb2("Serbia", y_name = "gov_soc_econ"), 
+             plot_nb2("United Kingdom", y_name = "gov_soc_econ"),
+             plot_nb2("Sweden", y_name = "gov_soc_econ"),
+             ncol=2, top="Levels of Governance and Socio-economic measures")
+```
+
+```{r, warning=FALSE, echo=FALSE}
+model.Hungary<- plot_nb2("Hungary", result = "model")
+model.Italy <- plot_nb2("Italy", result = "model")
+model.Serbia <- plot_nb2("Serbia",result = "model")
+model.UK <- plot_nb2("United Kingdom",result = "model")
+model.Sweden <- plot_nb2("Sweden",result = "model")
+```
+
+```{r, warning=FALSE, echo=FALSE}
+
+sig <- 6
+tab <- round(summary(model.Hungary)$coefficients[,1], sig)
+tab <- rbind(tab,round(summary(model.Italy)$coefficients[,1], sig))
+tab <- rbind(tab,round(summary(model.Serbia)$coefficients[,1], sig))
+tab <- rbind(tab,round(summary(model.UK)$coefficients[,1], sig))
+tab <- rbind(tab,round(summary(model.Sweden)$coefficients[,1], sig))
+
+kable(cbind(tab,c("Hungary","Italy","Serbia","United Kingdom","Sweden"),
+            round(c(AIC(model.Hungary),
+              AIC(model.Italy),
+              AIC(model.Serbia),
+              AIC(model.UK),
+              AIC(model.Sweden)),2)
+            ))
+```
+
+
+## lockdown measures
+
+```{r, fig.width=10, fig.height=8,warning=FALSE, message=FALSE, echo=FALSE}
+#library("gridExtra")
+grid.arrange(plot_nb2("Hungary", y_name = "lockdown"),
+             plot_nb2("Italy", y_name = "lockdown"),
+             plot_nb2("Serbia", y_name = "lockdown"), 
+             plot_nb2("United Kingdom", y_name = "lockdown"),
+             #plot_nb2("Sweden", y_name = "lockdown"),
+             ncol=2, top="Levels of lockdown measures")
+```
+
+```{r, warning=FALSE, echo=FALSE}
+model.Hungary<- plot_nb2("Hungary", result = "model")
+model.Italy <- plot_nb2("Italy", result = "model")
+model.Serbia <- plot_nb2("Serbia",result = "model")
+model.UK <- plot_nb2("United Kingdom",result = "model")
+model.Sweden <- plot_nb2("Sweden",result = "model")
+```
+
+```{r, warning=FALSE, echo=FALSE}
+
+sig <- 6
+tab <- round(summary(model.Hungary)$coefficients[,1], sig)
+tab <- rbind(tab,round(summary(model.Italy)$coefficients[,1], sig))
+tab <- rbind(tab,round(summary(model.Serbia)$coefficients[,1], sig))
+tab <- rbind(tab,round(summary(model.UK)$coefficients[,1], sig))
+tab <- rbind(tab,round(summary(model.Sweden)$coefficients[,1], sig))
+
+kable(cbind(tab,c("Hungary","Italy","Serbia","United Kingdom","Sweden"),
+            round(c(AIC(model.Hungary),
+              AIC(model.Italy),
+              AIC(model.Serbia),
+              AIC(model.UK),
+              AIC(model.Sweden)),2)
+            ))
+```
+
+#Response variables
+
+## gcmr_retail_recreation
+
+```{r, message=FALSE, warning=FALSE, echo=FALSE, include=FALSE}
+plot_nb3 <- function(Country = "United Kindom", 
+                    dates = c("2020-02-23","2020-09-23"),
+                    x_name = "date",
+                    y_name = "gcmr_retail_recreation",
+                    result = ""){
+  # get the dataset
+  CaseData <- {CovidData %>% 
+    filter( country == Country,
+            (date > as.Date(dates[1])) & (date < as.Date(dates[2])) )}
+  FirstWaveData <- CaseData %>%
+  mutate(date = yday(date))
+
+  skewed_fit <- glm(FirstWaveData[,y_name] ~ 1 + date + 
+                         I(date^2) 
+                    #+ I(log(date))
+                    , 
+                    data = FirstWaveData)
+  
+  
+  pred_skewed = predict(skewed_fit)
+  
+  skewed_plot_log_mov_rest <- {FirstWaveData %>% 
+      ggplot(aes(x = FirstWaveData[,x_name],y = (FirstWaveData[,y_name])))} +
+  geom_point() +
+  geom_line(aes(y = exp(pred_skewed)), size = 1) +
+  labs(x = "time/day", y = y_name,
+       title = Country
+       #subtitle = "Data Source: tidycovid19"
+       ) 
+  if (result == "model"){
+    return(skewed_fit)
+  } else{
+    return(skewed_plot_log_mov_rest)
+  }
+}
+```
+
+
+```{r}
+Country <- "Italy"
+dates = c("2020-02-23","2020-09-23")
+CaseData <- {CovidData %>% 
+    filter( country == Country,
+            (date > as.Date(dates[1])) & (date < as.Date(dates[2])) )}
+  FirstWaveData <- CaseData %>%
+  mutate(date = yday(date))
+  
+skewed_fit <- glm(FirstWaveData[,"gcmr_retail_recreation"] ~ 1 + date,
+                  data = FirstWaveData)
+coef(skewed_fit)
+pred_skewed = predict(skewed_fit)
+
+skewed_plot_log_mov_rest <- {FirstWaveData %>% 
+      ggplot(aes(x = date,y = gcmr_retail_recreation))} +
+  geom_point() +
+  geom_line(aes(y = pred_skewed), size = 1) +
+  labs(x = "time/day", y = "gcmr_retail_recreation",
+       title = Country,
+       subtitle = "Data Source: tidycovid19"
+       ) 
+
+ggplot(aes(x = date,y = na.omit(gcmr_retail_recreation)), data = FirstWaveData,
+       aes_string(x = "Condition", y = "FT")) +
+  geom_point()+
+  geom_line(aes(y = pred_skewed))
+
+
+ggplot(aes(x = date, y = pred_skewed), data = FirstWaveData) + 
+  geom_point()
+plot(x = FirstWaveData$date, y = pred_skewed)
+length(pred_skewed)
+#print(skewed_plot_log_mov_rest)
+#skewed_plot_log_mov_rest
+#CaseData$gcmr_retail_recreation
+```
+
+
+
+
+```{r, fig.width=10, fig.height=8,warning=FALSE, message=FALSE, echo=FALSE}
+#library("gridExtra")
+grid.arrange(plot_nb3("Hungary", y_name = "gcmr_retail_recreation"),
+             plot_nb3("Italy", y_name = "gcmr_retail_recreation"),
+             plot_nb3("Serbia", y_name = "gcmr_retail_recreation"), 
+             plot_nb3("United Kingdom", y_name = "gcmr_retail_recreation"),
+             plot_nb3("Sweden", y_name = "gcmr_retail_recreation"),
+             ncol=2, top="Visits to retail and recreation places")
+```
+
+```{r, warning=FALSE, echo=FALSE}
+model.Hungary<- plot_nb2("Hungary", result = "model")
+model.Italy <- plot_nb2("Italy", result = "model")
+model.Serbia <- plot_nb2("Serbia",result = "model")
+model.UK <- plot_nb2("United Kingdom",result = "model")
+model.Sweden <- plot_nb2("Sweden",result = "model")
+```
+
+```{r, warning=FALSE, echo=FALSE}
+
+sig <- 6
+tab <- round(summary(model.Hungary)$coefficients[,1], sig)
+tab <- rbind(tab,round(summary(model.Italy)$coefficients[,1], sig))
+tab <- rbind(tab,round(summary(model.Serbia)$coefficients[,1], sig))
+tab <- rbind(tab,round(summary(model.UK)$coefficients[,1], sig))
+tab <- rbind(tab,round(summary(model.Sweden)$coefficients[,1], sig))
+
+kable(cbind(tab,c("Hungary","Italy","Serbia","United Kingdom","Sweden"),
+            round(c(AIC(model.Hungary),
+              AIC(model.Italy),
+              AIC(model.Serbia),
+              AIC(model.UK),
+              AIC(model.Sweden)),2)
+            ))
+```
+
+
+
+
+```{r}
+Country <- "United Kingdom"
+dates = c("2020-02-23","2020-09-23")
+CaseData <- {CovidData %>% 
+    filter( country == Country,
+            (date > as.Date(dates[1])) & (date < as.Date(dates[2])) )}
+  FirstWaveData <- CaseData %>%
+  mutate(date = yday(date))
+  
+  
+plot(x=lockdown, y = gcmr_retail_recreation, data=CaseData)
+  
+  
+skewed_fit <- glm(FirstWaveData[,"gcmr_retail_recreation"] ~ 1 + date,
+                  data = FirstWaveData)
+coef(skewed_fit)
+pred_skewed = predict(skewed_fit)
+
+skewed_plot_log_mov_rest <- {FirstWaveData %>% 
+      ggplot(aes(x = date,y = gcmr_retail_recreation))} +
+  geom_point() +
+  geom_line(aes(y = pred_skewed), size = 1) +
+  labs(x = "time/day", y = "gcmr_retail_recreation",
+       title = Country,
+       subtitle = "Data Source: tidycovid19"
+       ) 
+
+ggplot(aes(x = date,y = na.omit(gcmr_retail_recreation)), data = FirstWaveData,
+       aes_string(x = "Condition", y = "FT")) +
+  geom_point()+
+  geom_line(aes(y = pred_skewed))
+
+
+ggplot(aes(x = date, y = pred_skewed), data = FirstWaveData) + 
+  geom_point()
+plot(x = FirstWaveData$date, y = pred_skewed)
+length(pred_skewed)
+```
+
+
+
+
+
+
+
+
+
