@@ -1,0 +1,263 @@
+---
+title: "modelling 2"
+author: "u1814083"
+date: "21/11/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+library(dplyr)
+library(readxl)
+CovidData <- read.csv("tidycovid19.csv")
+```
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+library(lubridate)
+CovidData$date = as.Date(parse_date_time(CovidData$date,orders=c("y","ym","ymd")))
+```
+
+```{r, fig.height=5,fig.width=8,echo=TRUE, warning=FALSE, message=FALSE}
+library(ggplot2)
+#countries = c("United Kingdom", "Sweden", "Italy")
+FirstWaveData <- {CovidData %>% 
+    filter((date > as.Date("2020-02-23") & 
+              (date < as.Date("2020-09-23"))) )%>%
+  mutate(date = yday(date))}
+```
+
+## Number of lockdown VS trend of retail recreation
+```{r, fig.height=5,fig.width=8,echo=TRUE, warning=FALSE, message=FALSE}
+plot_country1 <- function(country_name=""){
+  plot_ <- {FirstWaveData %>% 
+    filter(country == country_name) %>% 
+   ggplot(aes(x = lockdown,y = gcmr_retail_recreation)) +
+    geom_boxplot(aes(group = cut_width(lockdown, 0.05)))+
+    labs(title = country_name,
+       subtitle = "Number of public health VS trend of workplaces")}
+  return(plot_)
+}
+
+plot1.1.1 <- plot_country1("United Kingdom")
+#print(plot2.1.1)
+plot1.1.2 <- plot_country1("Sweden")
+
+plot1.1.3 <- plot_country1("Italy")
+library("gridExtra")
+grid.arrange(plot1.1.1, plot1.1.2,plot1.1.3, ncol=2, top="Variable comparation")
+```
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+plot1.2.1 <- plot_country1("Brazil")
+#print(plot2.1.1)
+plot1.2.2 <- plot_country1("Canada")
+
+library("gridExtra")
+grid.arrange(plot1.2.1, plot1.2.2,ncol=2, top="Variable comparation")
+
+```
+
+## Number of public health VS trend of workplaces
+
+```{r, fig.height=5,fig.width=8,echo=FALSE, warning=FALSE, message=FALSE}
+plot_country2 <- function(country_name=""){
+  plot_ <- {FirstWaveData %>% 
+    filter(country == country_name) %>% 
+   ggplot(aes(x = pub_health,y = gcmr_workplaces)) +
+    geom_boxplot(aes(group = cut_width(pub_health, 0.05)))+
+    labs(title = country_name,
+       subtitle = "Number of public health VS trend of workplaces")}
+  return(plot_)
+}
+
+plot2.1.1 <- plot_country2("United Kingdom")
+#print(plot2.1.1)
+plot2.1.2 <- plot_country2("Sweden")
+
+plot2.1.3 <- plot_country2("Italy")
+library("gridExtra")
+grid.arrange(plot2.1.1, plot2.1.2,plot2.1.3, ncol=2, top="Variable comparation")
+```
+
+
+```{r, fig.height=5,fig.width=8,echo=FALSE, warning=FALSE, message=FALSE}
+
+
+plot2.2.1 <- plot_country2("Brazil")
+#print(plot2.1.1)
+plot2.2.2 <- plot_country2("Canada")
+
+library("gridExtra")
+grid.arrange(plot2.2.1, plot2.2.2,ncol=2, top="Variable comparation")
+```
+
+## Number of movement restrictions VS trend of grocery pharmacy
+
+```{r, fig.height=5,fig.width=8,echo=FALSE, warning=FALSE, message=FALSE}
+plot_country3 <- function(country_name=""){
+  plot_ <- {FirstWaveData %>% 
+    filter(country == country_name) %>% 
+   ggplot(aes(x = mov_rest,y = gcmr_grocery_pharmacy)) +
+    geom_boxplot(aes(group = cut_width(mov_rest, 0.05)))+
+    labs(title = country_name,
+       subtitle = "Number of movement restrictions VS trend of grocery pharmacy")}
+  return(plot_)
+}
+
+plot3.1.1 <- plot_country3("United Kingdom")
+#print(plot2.1.1)
+plot3.1.2 <- plot_country3("Sweden")
+
+plot3.1.3 <- plot_country3("Italy")
+library("gridExtra")
+grid.arrange(plot3.1.1, plot3.1.2,plot3.1.3, ncol=2, top="Variable comparation")
+```
+
+
+```{r, fig.height=5,fig.width=8,echo=FALSE, warning=FALSE, message=FALSE}
+
+plot3.2.1 <- plot_country3("Brazil")
+#print(plot2.1.1)
+plot3.2.2 <- plot_country3("Canada")
+
+library("gridExtra")
+grid.arrange(plot3.2.1, plot3.2.2,ncol=2, top="Variable comparation")
+```
+
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+eu_countries = c("United Kingdom", "Sweden", "Italy")
+CaseData <- {CovidData %>% 
+    filter( country == eu_countries,
+            (date > as.Date("2020-02-23") & (date < as.Date("2020-09-23"))) )}
+FirstWaveData <- CaseData %>%
+  mutate(date = yday(date))
+
+plot2.1 <- {FirstWaveData %>% 
+   ggplot(aes(x = pub_health,y = gcmr_workplaces)) +
+    geom_jitter(aes(color=country))+
+    #geom_smooth(method = lm, formula = y ~ splines::bs(x, df=6), se = FALSE, aes(color=country)) +
+    labs(x = "public health", y = "workplaces",
+       title = "Europe",
+       subtitle = "Number of public health VS trend of workplaces")}
+#print(plot2.1)
+```
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+am_countries = c("Brazil", "Canada")
+CaseData <- {CovidData %>% 
+    filter( country == am_countries,
+            (date > as.Date("2020-02-23") & (date < as.Date("2020-09-23"))) )}
+FirstWaveData <- CaseData %>%
+  mutate(date = yday(date))
+
+plot2.2 <- {FirstWaveData %>% 
+   ggplot(aes(x = pub_health,y = gcmr_workplaces)) +
+    geom_jitter(aes(color=country))+
+    #geom_smooth(method = lm, formula = y ~ splines::bs(x, df=6), se = FALSE, aes(color=country)) +
+    labs(x = "public health", y = "workplaces",
+       title = "American",
+       subtitle = "Number of public health VS trend of workplaces")}
+#print(plot2.2)
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+eu_countries = c("United Kingdom", "Sweden", "Italy")
+CaseData <- {CovidData %>% 
+    filter( country == eu_countries,
+            (date > as.Date("2020-02-23") & (date < as.Date("2020-09-23"))) )}
+FirstWaveData <- CaseData %>%
+  mutate(date = yday(date))
+
+plot3.1 <- {FirstWaveData %>% 
+   ggplot(aes(x = mov_rest,y = gcmr_grocery_pharmacy)) +
+    geom_jitter(aes(color=country))+
+    #geom_smooth(method = lm, formula = y ~ splines::bs(x, df=6), se = FALSE, aes(color=country)) +
+    labs(x = "movement restrictions", y = "grocery pharmacy",
+       title = "Europe",
+       subtitle = "Number of movement restrictions VS trend of grocery pharmacy")}
+#print(plot3.1)
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+am_countries = c("Brazil", "Canada")
+CaseData <- {CovidData %>% 
+    filter( country == am_countries,
+            (date > as.Date("2020-02-23") & (date < as.Date("2020-09-23"))) )}
+FirstWaveData <- CaseData %>%
+  mutate(date = yday(date))
+
+plot3.2 <- {FirstWaveData %>% 
+   ggplot(aes(x = mov_rest,y = gcmr_grocery_pharmacy)) +
+    geom_jitter(aes(color=country))+
+    #geom_smooth(method = lm, formula = y ~ splines::bs(x, df=6), se = FALSE, aes(color=country)) +
+    labs(x = "movement restrictions", y = "grocery pharmacy",
+       title = "Europe",
+       subtitle = "Number of movement restrictions VS trend of grocery pharmacy")}
+#print(plot3.2)
+```
+
+
+
+
+```{r, fig.width=10, fig.height=8, echo=FALSE, warning=FALSE, message=FALSE}
+library("gridExtra")
+#grid.arrange(plot1.1,plot1.2, plot2.1, plot2.2,plot3.1,plot3.2,ncol=2, top="Variable comparation")
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(MASS)
+
+CaseData <- {CovidData %>% 
+    filter( country == "United Kingdom",
+            (date > as.Date("2020-02-23") & (date < as.Date("2020-09-23"))) )}
+FirstWaveData <- CaseData %>%
+  mutate(date = yday(date))
+
+#skewed_fit <- glm.nb(gcmr_grocery_pharmacy ~ 1 + mov_rest, data = FirstWaveData)
+#pred_skewed = predict(skewed_fit)
+#summary(skewed_fit)
+
+skewed_plot_log_mov_rest <- {FirstWaveData %>% 
+    ggplot(aes(x = lockdown, y = -(gcmr_grocery_pharmacy)))} +
+  geom_point() +
+  #geom_line(aes(y = exp(pred_skewed)), size = 1) +
+  labs(title = eu_countries,
+       subtitle = "Data Source: tidycovid19") 
+
+#print(skewed_plot_log_mov_rest)
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+```
+
+
+
+
