@@ -1,0 +1,354 @@
+---
+title: "modelling 3"
+author: "u1814083"
+date: "24/11/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r echo = FALSE, warning=FALSE, message = FALSE}
+library(dplyr)
+library (readr)
+library(rio)
+library(lubridate)
+library(ggplot2)
+library(tidyverse)
+```
+
+```{r LoadData, echo = FALSE, warning=FALSE, message = FALSE}
+#urlfile="https://raw.githubusercontent.com/OxCGRT/covid-policy-tracker/master/data/OxCGRT_latest.csv"
+
+#mydata<-read_csv(url(urlfile), col_types = cols(.default = col_double(),CountryName = col_character(),CountryCode = col_character(),RegionName = col_character(),RegionCode = col_character(),M1_Wildcard = col_character()))
+mydata <- read_csv("~/R/covid19/OxCGRT_latest.csv")
+```
+
+From OxCGRT dataset, we standardize each division of lockdown measures, movement restriction measures and public health measures and summing up.
+
+```{r Preprocess1, echo = FALSE, warning=FALSE, message = FALSE}
+mydata <- read_csv("~/R/covid19/OxCGRT_latest.csv")
+
+DataMulFlag <- function(flag="", name="", scale = 1){
+  mydata[,flag][mydata[,flag] == 0] <- 0.5
+  mydata[,flag][is.na(mydata[,flag])] <- 0
+  result <- mydata[,flag] * (mydata[,name] / scale)
+  result[is.na(result)] <- 0
+  return(result)
+}
+
+mydata$dataC1 <- DataMulFlag("C1_Flag","C1_School closing",3)
+mydata$dataC2 <- DataMulFlag("C2_Flag","C2_Workplace closing",3)
+mydata$dataC3 <- DataMulFlag("C3_Flag","C3_Cancel public events",2)
+mydata$dataC4 <- DataMulFlag("C4_Flag","C4_Restrictions on gatherings",4)
+mydata$dataC5 <- DataMulFlag("C5_Flag","C5_Close public transport",2)
+mydata$dataC6 <- DataMulFlag("C6_Flag","C6_Stay at home requirements",3)
+mydata$dataC7 <- DataMulFlag("C7_Flag","C7_Restrictions on internal movement",2)
+mydata$dataC8 <- mydata$`C8_International travel controls` / 4
+mydata$dataC8[is.na(mydata$dataC8)] <- 0
+
+mydata$Lockdown <- rowSums(mydata[,c(48,49,50,51,53)])
+mydata$Mov_res <- rowSums(mydata[,c(52,54,55)])
+
+mydata$dataH1 <- DataMulFlag("H1_Flag", "H1_Public information campaigns",2)
+mydata$dataH2 <- mydata$`H2_Testing policy` / 3
+mydata$dataH2[is.na(mydata$dataH2)] <- 0
+mydata$dataH3 <- mydata$`H3_Contact tracing` / 2
+mydata$dataH3[is.na(mydata$dataH3)] <- 0
+mydata$dataH6 <- DataMulFlag("H6_Flag", "H6_Facial Coverings",4)
+
+mydata$Pub_health <- rowSums(mydata[,c(58:61)])
+
+
+#mydata$Lockdown <- sum(mydata$C1_Flag * mydata$`C1_School closing` / 3, mydata$C2_Flag * mydata$`C2_Workplace closing` / 3,mydata$C3_Flag * mydata$`C3_Cancel public events` /2,mydata$C4_Flag * mydata$`C4_Restrictions on gatherings`/4,mydata$C5_Flag * mydata$`C5_Close public transport` /2,mydata$C6_Flag * mydata$`C6_Stay at home requirements` /3,mydata$C7_Flag * mydata$`C7_Restrictions on internal movement` /2,mydata$`C8_International travel controls` /4)
+
+#summary(mydata$C1_Flag * mydata$`C1_School closing` / 3)
+
+#mydata <- relocate(mydata, Lockdown, .after=`C8_International travel controls`)
+
+MyData <- dplyr::select(mydata, CountryName, RegionName, Date, ConfirmedCases, ConfirmedDeaths, StringencyIndexForDisplay, EconomicSupportIndexForDisplay, Lockdown, Mov_res,Pub_health)
+MyData$Lockdown[is.na(MyData$Lockdown)] <- 0
+MyData$Mov_res[is.na(MyData$Mov_res)] <- 0
+MyData$Pub_health[is.na(MyData$Pub_health)] <- 0
+
+firstdiff <- function(x) {
+  shifted <- c(0,x[1:(length(x)-1)])
+  result = x-shifted
+  which_negative = which(result<0)
+  result[which_negative] = NA
+  return(result)
+}
+
+MyData <- MyData %>%
+  mutate(ConfirmedCases = firstdiff(ConfirmedCases), ConfirmedDeaths = firstdiff(ConfirmedDeaths))
+
+MyData <- MyData %>% 
+  mutate(Country = factor(CountryName), Region = factor(RegionName), Date = as_date(as.character(Date)), CountryName = NULL, RegionName = NULL) %>%
+  relocate(c(Country, Region), .before = Date)
+```
+
+```{r AddContinent, echo = FALSE, warning=FALSE}
+Countries <- import("Countries.xlsx", setclass = "tibble")
+colnames(Countries) <- c('Continent', 'Country')
+Countries <- filter(Countries, Country %in% MyData$Country)
+
+# Join the data frames and implement categorical data as factors
+MyData <- left_join(MyData, Countries, by = "Country")
+MyData <- MyData %>% mutate(Continent = factor(Continent)) %>%
+  relocate(Continent) %>%
+  tidyr::drop_na(Continent) %>% # drops data from 11.4% of the countries in the world. However, these are most likely small countries and therefore not important to the business
+  filter(Continent %in% c('Europe', 'North America', 'South America'))
+```
+
+```{r Preprocess2, echo = FALSE, warning=FALSE, message = FALSE}
+ContinentData <- MyData %>%
+  group_by(Date, Continent) %>%
+  dplyr::summarize(ConfirmedCases = sum(ConfirmedCases, na.rm=TRUE), 
+                   ConfirmedDeaths = sum(ConfirmedDeaths, na.rm=TRUE), 
+                   #LockdownMeasure = sum()
+                   StringencyIndexForDisplay = mean(StringencyIndexForDisplay, na.rm=TRUE), 
+                   EconomicSupportIndexForDisplay = mean(EconomicSupportIndexForDisplay, na.rm=TRUE), 
+                   Lockdown = mean(Lockdown),
+                   Mov_res = mean(Mov_res),
+                   Pub_health = mean(Pub_health)) %>%
+  mutate(across(c(StringencyIndexForDisplay, EconomicSupportIndexForDisplay, Lockdown), round, 3))
+```
+
+```{r Plot, fig.height= 8, fig.width=10, echo = FALSE, message = FALSE, warning=FALSE}
+
+plot_ContinentalConfirmed <- ggplot(ContinentData, aes(x=Date, y=ConfirmedCases, col=Continent)) + geom_point(size=0.7) + labs(title = "Confirmed Cases against time")
+
+plot_ContinentalLockdown <- ggplot(ContinentData, aes(x=Date, y=Lockdown, col=Continent)) + geom_point(size=0.7) + labs(title = "Lockdown against time")
+
+plot_ContinentalMov_res <- ggplot(ContinentData, aes(x=Date, y=Mov_res, col=Continent)) + geom_point(size=0.7) + labs(title = "Movement restriction against time")
+
+plot_ContinentalPub_health<- ggplot(ContinentData, aes(x=Date, y=Pub_health, col=Continent)) + geom_point(size=0.7) + labs(title = "Public health against time")
+
+library("gridExtra")
+grid.arrange(plot_ContinentalConfirmed, plot_ContinentalLockdown,plot_ContinentalMov_res,plot_ContinentalPub_health, ncol=2, top="Variable comparation")
+```
+
+
+```{r loadCovid, echo = FALSE, warning=FALSE, message = FALSE}
+CovidData <- read.csv("tidycovid19.csv")
+CovidData$date = as.Date(parse_date_time(CovidData$date,orders=c("y","ym","ymd")))
+```
+
+```{r selectContinents, echo = FALSE, warning=FALSE, message = FALSE}
+targeted_countries <- c("United Kingdom", "Sweden", "Italy", "Brazil","Canada","United States")
+EUAdata <- MyData %>% filter(Country %in% targeted_countries)
+```
+
+```{r Preprocess3, echo = FALSE, warning=FALSE, message = FALSE}
+#Countries <- filter(MyData, Country %in% MyData$Country)
+
+MyData$Date = as.Date(parse_date_time(MyData$Date,orders=c("y","ym","ymd")))
+MyData_EUA <- MyData %>% filter(Country %in% targeted_countries, (Date > as.Date("2020-02-23") & 
+              (Date < as.Date("2020-09-23"))))
+
+CountryDailyData <- MyData_EUA %>%
+  group_by(Date, Country) %>%
+  dplyr::summarize(ConfirmedCases = sum(ConfirmedCases, na.rm=TRUE), 
+                   ConfirmedDeaths = sum(ConfirmedDeaths, na.rm=TRUE), 
+                   #LockdownMeasure = sum()
+                   StringencyIndexForDisplay = mean(StringencyIndexForDisplay, na.rm=TRUE), 
+                   EconomicSupportIndexForDisplay = mean(EconomicSupportIndexForDisplay, na.rm=TRUE), 
+                   Lockdown = mean(Lockdown),
+                   Mov_res = mean(Mov_res),
+                   Pub_health = mean(Pub_health)) %>%
+  mutate(across(c(StringencyIndexForDisplay, EconomicSupportIndexForDisplay, Lockdown), round, 3))
+```
+
+```{r AddLockdown, echo = FALSE, warning=FALSE, message = FALSE}
+CovidData <- read.csv("tidycovid19.csv")
+CovidData$date = as.Date(parse_date_time(CovidData$date,orders=c("y","ym","ymd")))
+
+EUAdata <- CovidData %>% filter(country %in% targeted_countries, 
+                                (date > as.Date("2020-02-23") & (date < as.Date("2020-09-23"))))
+EUAdata <- dplyr::select(EUAdata, country, confirmed, date, gcmr_retail_recreation, gcmr_grocery_pharmacy, gcmr_workplaces, gcmr_transit_stations, gcmr_residential)
+
+
+EUAdata <-left_join(EUAdata, CountryDailyData, 
+                    by = c("country" = "Country", "date" = "Date"))
+```
+
+### A plot showing lockdown and government restrictions against time
+```{r, fig.height= 8, fig.width=10, echo = FALSE, message = FALSE, warning=FALSE}
+
+plot_ContinentalConfirmed <- ggplot(EUAdata, aes(x=date, y=ConfirmedCases, col=country)) + geom_point(size=1) + labs(title = "Confirmed Cases against time")
+
+#plot_ContinentalConfirmed2 <- ggplot(EUAdata, aes(x=date, y=confirmed, col=country)) + geom_point(size=1) + labs(title = "Confirmed Cases against time")
+
+plot_ContinentalLockdown <- ggplot(EUAdata, aes(x=date, y=Lockdown, col=country)) + geom_point(size=1) + labs(title = "Lockdown against time")
+
+plot_ContinentalMov_res <- ggplot(EUAdata, aes(x=date, y=Mov_res, col=country)) + geom_point(size=1) + labs(title = "Movement restriction against time")
+
+plot_ContinentalPub_health<- ggplot(EUAdata, aes(x=date, y=Pub_health, col=country)) + geom_point(size=1) + labs(title = "Public health against time")
+
+library("gridExtra")
+grid.arrange(plot_ContinentalConfirmed, plot_ContinentalLockdown,plot_ContinentalMov_res,plot_ContinentalPub_health, ncol=2, top="Variable comparation")
+```
+
+```{r, fig.height= 8, fig.width=10, echo = FALSE, message = FALSE, warning=FALSE}
+
+plot_ContinentalConfirmed <- ggplot(EUAdata, aes(x=date, y=ConfirmedCases, col=country)) + geom_point(size=1) + labs(title = "Confirmed Cases against time")
+
+#plot_ContinentalConfirmed2 <- ggplot(EUAdata, aes(x=date, y=confirmed, col=country)) + geom_point(size=1) + labs(title = "Confirmed Cases against time")
+
+plot_ContinentalLockdown <- ggplot(EUAdata, aes(x=date, y=gcmr_retail_recreation, col=country)) + geom_point(size=1) + labs(title = "Lockdown against time")
+
+plot_ContinentalMov_res <- ggplot(EUAdata, aes(x=date, y=gcmr_workplaces, col=country)) + geom_point(size=1) + labs(title = "Movement restriction against time")
+
+plot_ContinentalPub_health<- ggplot(EUAdata, aes(x=date, y=gcmr_grocery_pharmacy, col=country)) + geom_point(size=1) + labs(title = "Public health against time")
+
+library("gridExtra")
+grid.arrange(plot_ContinentalConfirmed, plot_ContinentalLockdown,plot_ContinentalMov_res,plot_ContinentalPub_health, ncol=2, top="Variable comparation")
+```
+
+## Number of lockdown VS trend of retail recreation
+
+```{r, fig.height=6,fig.width=10,echo=FALSE, warning=FALSE, message=FALSE}
+plot_country1 <- function(country_name=""){
+  selected <- EUAdata %>% 
+    filter(country == country_name,!is.na(gcmr_retail_recreation))
+  splines_fit <- lm(gcmr_retail_recreation + 100 ~  1 + Lockdown, data = selected)
+  #glm.nb(gcmr_workplaces + 100 ~ 1 + ns(pub_health, knots = c(60,100,140,180)), data = selected)
+  #glm.nb(gcmr_workplaces + 100 ~ 1 + Pub_health + I(Pub_health^2) +I(Pub_health^3) + I(Pub_health^4), data = selected)
+  
+  pred_splines = predict(splines_fit)
+  
+  plot_ <- {selected %>% 
+      ggplot(aes(x = Lockdown,
+              y = ((gcmr_retail_recreation)+100)
+              )) +
+      geom_point()+
+      
+      geom_jitter()+
+    #geom_boxplot(aes(group = cut_width(Lockdown, 0.1)))+
+    geom_line(y=(pred_splines), color = "red") +
+    labs(x = "OxCGRT Lockdown measure", y = "Percentage change",
+      title = country_name,
+       subtitle = "Number of public health VS trend of retail recreation")}
+  print(coef(splines_fit))
+  return(plot_)
+}
+
+plot1.1.1 <- plot_country1("United Kingdom")
+#print(plot2.1.1)
+plot1.1.2 <- plot_country1("Sweden")
+
+plot1.1.3 <- plot_country1("Italy")
+
+plot1.2.1 <- plot_country1("Brazil")
+#print(plot2.1.1)
+plot1.2.2 <- plot_country1("Canada")
+plot1.2.3 <- plot_country1("United States")
+
+library("gridExtra")
+grid.arrange(plot1.1.1, plot1.1.2,plot1.1.3, plot1.2.1, plot1.2.2,plot1.2.3, ncol=2, top="Variable comparation")
+```
+
+
+## Number of public health VS trend of workplaces
+
+```{r, fig.height=8,fig.width=10,echo=FALSE, warning=FALSE, message=FALSE}
+library(MASS)
+
+plot_country2 <- function(country_name=""){
+  selected <- EUAdata %>% 
+    filter(country == country_name,!is.na(gcmr_workplaces))
+  splines_fit <- glm.nb(gcmr_workplaces + 100 ~ 1 + Pub_health + I(Pub_health^2) +I(Pub_health^3) + I(Pub_health^4), data = selected)
+    #glm(gcmr_workplaces + 100 ~ splines::bs(Pub_health, df=4),data = selected)
+  #glm.nb(gcmr_workplaces + 100 ~ 1 + ns(pub_health, knots = c(60,100,140,180)), data = selected)
+    
+  
+  pred_splines= predict(splines_fit)
+  #print(coef(splines_fit))
+  #print(AIC())
+  #print(summary(splines_fit))
+
+  plot_ <- {selected %>% 
+   ggplot(aes(x = Pub_health,y = gcmr_workplaces + 100)) +
+    geom_point() + 
+      #geom_jitter()+
+    geom_boxplot(aes(group = cut_width(Pub_health, 0.1)))+
+    #geom_smooth(method = glm, formula = y ~ splines::bs(x, df=4), se = FALSE, color="red")+
+    #geom_smooth()
+    geom_line(y=exp(pred_splines), color = "red") +
+    labs(x="OxCGRT public health measure",y="Percentage to baseline trend",
+         title = country_name,
+         subtitle = "Number of public health VS trend of workplaces")}
+  return(plot_)
+}
+
+plot2.1.1 <- plot_country2("United Kingdom")
+#print(plot2.1.1)
+plot2.1.2 <- plot_country2("Sweden")
+
+plot2.1.3 <- plot_country2("Italy")
+
+plot2.2.1 <- plot_country2("Brazil")
+#print(plot2.1.1)
+plot2.2.2 <- plot_country2("Canada")
+plot2.2.3 <- plot_country2("United States")
+#library("gridExtra")
+grid.arrange(plot2.1.1, plot2.1.2,plot2.1.3,plot2.2.1,plot2.2.2,plot2.2.3, ncol=2, top="Variable comparation")
+```
+
+
+## Number of movement restrictions VS trend of grocery pharmacy
+
+
+```{r, fig.height=6,fig.width=10, echo=FALSE, warning=FALSE, message=FALSE}
+
+plot_country3 <- function(country_name=""){
+  selected <- EUAdata %>% 
+    filter(country == country_name,!is.na(gcmr_grocery_pharmacy))
+  splines_fit <- lm(gcmr_grocery_pharmacy + 100 ~  1 + Mov_res, data = selected)
+  #glm.nb(gcmr_workplaces + 100 ~ 1 + ns(pub_health, knots = c(60,100,140,180)), data = selected)
+  #glm.nb(gcmr_workplaces + 100 ~ 1 + Pub_health + I(Pub_health^2) +I(Pub_health^3) + I(Pub_health^4), data = selected)
+  
+  pred_splines = predict(splines_fit)
+  
+  plot_ <- {selected %>% 
+      ggplot(aes(x = Mov_res,
+              y = ((gcmr_grocery_pharmacy)+100)
+              )) +
+      geom_point()+
+      
+      #geom_jitter()+
+      geom_boxplot(aes(group = cut_width(Lockdown, 0.1)))+
+      geom_line(y=(pred_splines), color = "red") +
+      labs(x = "OxCGRT Movement restriction measure", y = "Percentage to baseline trend",
+      title = country_name,
+       subtitle = "Number of movement restrictions VS trend of grocery pharmacy")}
+  #print(coef(splines_fit))
+  return(plot_)
+}
+
+plot3.1.1 <- plot_country3("United Kingdom")
+plot3.1.2 <- plot_country3("Sweden")
+plot3.1.3 <- plot_country3("Italy")
+
+plot3.2.1 <- plot_country3("Brazil")
+plot3.2.2 <- plot_country3("Canada")
+plot3.2.3 <- plot_country3("United States")
+
+library("gridExtra")
+grid.arrange(plot3.1.1, plot3.1.2, plot3.1.3, plot3.2.1, plot3.2.2, plot3.2.3, ncol=2, top="Variable comparation")
+```
+
+```{r, echo = FALSE, warning=FALSE, message = FALSE}
+
+```
+
+```{r, echo = FALSE, warning=FALSE, message = FALSE}
+
+```
+
+```{r, echo = FALSE, warning=FALSE, message = FALSE}
+
+```
+
+
