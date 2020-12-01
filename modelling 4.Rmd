@@ -1,0 +1,178 @@
+---
+title: "modelling 4"
+author: "u1814083"
+date: "01/12/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(tidyverse)
+library(dplyr)
+CovidData <- read.csv("tidycovid19.csv")
+
+library(lubridate)
+CovidData$date = as.Date(parse_date_time(CovidData$date,orders=c("y","ym","ymd")))
+
+firstDiff <- function(x) {
+  shifted <- c(0,x[1:(length(x)-1)])
+  result = x-shifted
+  which_negative = which(result<0)
+  result[which_negative] = NA
+  return(result)
+}
+CovidData <- CovidData %>%
+  mutate(daily_confirmed = firstDiff(confirmed))
+CovidData <- CovidData %>%
+  mutate(daily_deaths = firstDiff(deaths))
+CovidData <- CovidData %>%
+  mutate(daily_recovered = firstDiff(recovered))
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(dplyr)
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+# select countries
+targeted_countries <- c("United Kingdom", "Sweden", "Italy", "Brazil","Canada","United States")
+
+EUAdata <- CovidData %>% filter(country %in% targeted_countries, 
+                                (date > as.Date("2020-02-23")))
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+# Multiple plot function
+#
+# ggplot objects can be passed in ..., or to plotlist (as a list of ggplot objects)
+# - cols:   Number of columns in layout
+# - layout: A matrix specifying the layout. If present, 'cols' is ignored.
+#
+# If the layout is something like matrix(c(1,2,3,3), nrow=2, byrow=TRUE),
+# then plot 1 will go in the upper left, 2 will go in the upper right, and
+# 3 will go all the way across the bottom.
+#
+multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
+  require(grid)
+
+  # Make a list from the ... arguments and plotlist
+  plots <- c(list(...), plotlist)
+
+  numPlots = length(plots)
+
+  # If layout is NULL, then use 'cols' to determine layout
+  if (is.null(layout)) {
+    # Make the panel
+    # ncol: Number of columns of plots
+    # nrow: Number of rows needed, calculated from # of cols
+    layout <- matrix(seq(1, cols * ceiling(numPlots/cols)),
+                    ncol = cols, nrow = ceiling(numPlots/cols))
+  }
+
+ if (numPlots==1) {
+    print(plots[[1]])
+
+  } else {
+    # Set up the page
+    grid.newpage()
+    pushViewport(viewport(layout = grid.layout(nrow(layout), ncol(layout))))
+
+    # Make each plot, in the correct location
+    for (i in 1:numPlots) {
+      # Get the i,j matrix positions of the regions that contain this subplot
+      matchidx <- as.data.frame(which(layout == i, arr.ind = TRUE))
+
+      print(plots[[i]], vp = viewport(layout.pos.row = matchidx$row,
+                                      layout.pos.col = matchidx$col))
+    }
+  }
+}
+```
+
+```{r, fig.height=6,fig.width=10,echo=TRUE, warning=FALSE, message=FALSE}
+
+# a function that fits with gcmr data with respect to variable names
+plot_gcmr <- function(y="gcmr_retail_recreation"){
+  
+  # a function for plotting each country
+  plot_country1 <- function(country_name=""){
+    selected <- EUAdata %>% 
+      filter(country == country_name)
+    
+    # to eliminate "double curves", we omit weekends data for gcmr_workplaces and gcmr_grocery_pharmacy
+    if (y == "gcmr_workplaces" | y == "gcmr_grocery_pharmacy"){
+      selected <- selected %>% filter(!(weekdays(as.Date(date)) %in% c('Saturday','Sunday')))
+    }
+    selected <- selected %>% filter(!is.na(selected[,y]),
+           (date > as.Date("2020-02-23")) & (date < as.Date("2020-12-23"))) %>%
+      mutate(date = yday(date))
+    
+    
+    glm_fit <- glm(selected[,y] ~  1 + date + I(date^2) + I(date^3) + I(date^4) + I(date^5),
+                     #I(log(date)), 
+                     data = selected)
+    predict.1 <- predict(glm_fit)
+    plot_0 <- ggplot(aes(x = date, y = selected[,y]), data = selected) +
+      geom_point(size=1) +
+      geom_line(y=predict.1, color="red") + 
+      labs(x = "Dates", y = y,
+        title = country_name)
+    #print(coef(glm_fit))
+    return(plot_0)
+  }
+
+  myplots <- vector('list', 6)
+  for(i in 1:length(targeted_countries)){
+    #append(l,plot_country1(country))
+    myplots[[i]] <- plot_country1(targeted_countries[i])
+  }
+  #return(myplots)
+  multiplot(plotlist = myplots, cols = 2)
+}
+
+plot_gcmr("gcmr_retail_recreation")
+
+
+```
+
+```{r, fig.height=6,fig.width=10,echo=TRUE, warning=FALSE, message=FALSE}
+plot_gcmr("gcmr_workplaces")
+```
+
+```{r, fig.height=6,fig.width=10,echo=TRUE, warning=FALSE, message=FALSE}
+plot_gcmr("gcmr_grocery_pharmacy")
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+```
+
+
