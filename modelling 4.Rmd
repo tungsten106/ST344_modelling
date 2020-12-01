@@ -42,7 +42,25 @@ library(dplyr)
 targeted_countries <- c("United Kingdom", "Sweden", "Italy", "Brazil","Canada","United States")
 
 EUAdata <- CovidData %>% filter(country %in% targeted_countries, 
-                                (date > as.Date("2020-02-23")))
+                                (date > as.Date("2020-02-06")))
+```
+
+# General pattern
+
+```{r, fig.height= 8, fig.width=10, echo = FALSE, message = FALSE, warning=FALSE}
+
+plot_ContinentalConfirmed <- ggplot(EUAdata, aes(x=date, y=log(daily_confirmed), col=country)) + geom_point(size=.75) + labs(title = "Confirmed Cases against time")
+
+#plot_ContinentalConfirmed2 <- ggplot(EUAdata, aes(x=date, y=confirmed, col=country)) + geom_point(size=1) + labs(title = "Confirmed Cases against time")
+
+plot_gcmr_retail_recreation <- ggplot(EUAdata, aes(x=date, y=gcmr_retail_recreation, col=country)) + geom_point(size=.75) + labs(title = "gcmr_retail_recreation")
+
+plot_gcmr_workplaces <- ggplot(EUAdata, aes(x=date, y=gcmr_workplaces, col=country)) + geom_point(size=.75) + labs(title = "gcmr_workplaces")
+
+plot_gcmr_grocery_pharmacy<- ggplot(EUAdata, aes(x=date, y=gcmr_grocery_pharmacy, col=country)) + geom_point(size=.75) + labs(title = "gcmr_grocery_pharmacy")
+
+library("gridExtra")
+grid.arrange(plot_ContinentalConfirmed,plot_gcmr_retail_recreation, plot_gcmr_workplaces,plot_gcmr_grocery_pharmacy, ncol=2, top="Variable comparation")
 ```
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
@@ -93,13 +111,93 @@ multiplot <- function(..., plotlist=NULL, file, cols=1, layout=NULL) {
 }
 ```
 
+# First wave plots
+
 ```{r, fig.height=6,fig.width=10,echo=TRUE, warning=FALSE, message=FALSE}
+print(targeted_countries)
+wave_dates <- c("2020-07-15", "2020-07-20", "2020-07-01", "2020-11-01", "2020-08-10", "2020-06-07")
+print(wave_dates)
+```
+
+
+```{r, fig.height=6,fig.width=10,echo=TRUE, warning=FALSE, message=FALSE}
+library(splines)
+
+library(splines)
 
 # a function that fits with gcmr data with respect to variable names
-plot_gcmr <- function(y="gcmr_retail_recreation"){
+plot_gcmr_wave3 <- function(y="gcmr_retail_recreation"){
   
   # a function for plotting each country
-  plot_country1 <- function(country_name=""){
+  plot_country1 <- function(country_name="", date_range = c("2020-02-06", "2020-07-15")){
+    selected <- EUAdata %>% 
+      filter(country == country_name)
+    
+    
+    # to eliminate "double curves", we omit weekends data for gcmr_workplaces and gcmr_grocery_pharmacy
+    if (y == "gcmr_workplaces" | y == "gcmr_grocery_pharmacy"){
+      selected <- selected %>% filter(!(weekdays(as.Date(date)) %in% c('Saturday','Sunday')))
+    }
+    selected <- selected %>% filter(!is.na(selected[,y]),
+           (date > as.Date(date_range[1])) & (date < as.Date(date_range[2]))) %>%
+      mutate(date = yday(date))
+    
+    
+    if(i==6){
+      print(as.Date(selected$date, "2020-01-01"))
+    }
+    glm_fit <- glm(selected[,y] ~  1 + ns(date, knots = c(60,100,140,180))
+                   # + I(date^3) + I(date^4) + I(date^5)
+                   ,data = selected)
+    #glm_fit <- glm(selected[,y] ~ date, data = selected)
+    predict.1 <- predict(glm_fit)
+    
+    plot_0 <- ggplot(aes(x = as.Date(date,origin = "2020-01-01"), y = selected[,y]), data = selected) +
+      geom_point(size=1) +
+      geom_line(y=predict.1, color="red") + 
+      labs(x = "Dates", y = "% change from baseline",
+        title = country_name)
+    
+    #print(coef(glm_fit))
+    return(plot_0)
+  }
+
+  myplots <- vector('list', 6)
+  for(i in 1:length(targeted_countries)){
+    
+    #append(l,plot_country1(country))
+    myplots[[i]] <- plot_country1(targeted_countries[i])
+  }
+  
+  
+  #return(myplots)
+  
+  multiplot(plotlist = myplots, cols = 2)
+}
+#"2020-07-15" "2020-07-20" "2020-07-01" "2020-11-01" "2020-08-10"
+#[6] "2020-06-07"
+plot_gcmr_wave3("gcmr_retail_recreation")
+#print(as.Date(wave_dates[1]))
+```
+
+```{r, fig.height=6,fig.width=10,echo=TRUE, warning=FALSE, message=FALSE}
+plot_gcmr_wave1("gcmr_workplaces")
+```
+
+```{r, fig.height=6,fig.width=10,echo=TRUE, warning=FALSE, message=FALSE}
+#plot_gcmr("gcmr_grocery_pharmacy")
+```
+
+# Second wave plots
+
+```{r, fig.height=6,fig.width=10,echo=FALSE, warning=FALSE, message=FALSE}
+library(splines)
+
+# a function that fits with gcmr data with respect to variable names
+plot_gcmr_wave2 <- function(y="gcmr_retail_recreation"){
+  
+  # a function for plotting each country
+  plot_country1 <- function(country_name="", date_range = c("2020-02-06", "2020-07-15")){
     selected <- EUAdata %>% 
       filter(country == country_name)
     
@@ -108,18 +206,20 @@ plot_gcmr <- function(y="gcmr_retail_recreation"){
       selected <- selected %>% filter(!(weekdays(as.Date(date)) %in% c('Saturday','Sunday')))
     }
     selected <- selected %>% filter(!is.na(selected[,y]),
-           (date > as.Date("2020-02-23")) & (date < as.Date("2020-12-23"))) %>%
+           (date > as.Date(date_range[1])) & (date < as.Date(date_range[2]))) %>%
       mutate(date = yday(date))
     
     
-    glm_fit <- glm(selected[,y] ~  1 + date + I(date^2) + I(date^3) + I(date^4) + I(date^5),
-                     #I(log(date)), 
-                     data = selected)
+    glm_fit <- glm(selected[,y] ~  1 + ns(date, knots = c(60,100,140,180))
+                   # + I(date^3) + I(date^4) + I(date^5)
+                   ,data = selected)
+    #glm_fit <- glm(selected[,y] ~ date, data = selected)
     predict.1 <- predict(glm_fit)
-    plot_0 <- ggplot(aes(x = date, y = selected[,y]), data = selected) +
+
+    plot_0 <- ggplot(aes(x = as.Date(date,origin = "2020-01-01"), y = selected[,y]), data = selected) +
       geom_point(size=1) +
       geom_line(y=predict.1, color="red") + 
-      labs(x = "Dates", y = y,
+      labs(x = "Dates", y = "% change from baseline",
         title = country_name)
     #print(coef(glm_fit))
     return(plot_0)
@@ -128,39 +228,92 @@ plot_gcmr <- function(y="gcmr_retail_recreation"){
   myplots <- vector('list', 6)
   for(i in 1:length(targeted_countries)){
     #append(l,plot_country1(country))
-    myplots[[i]] <- plot_country1(targeted_countries[i])
+    myplots[[i]] <- plot_country1(targeted_countries[i], date_range = c(wave_dates[i], "2020-12-15"))
   }
   #return(myplots)
   multiplot(plotlist = myplots, cols = 2)
 }
 
-plot_gcmr("gcmr_retail_recreation")
+plot_gcmr_wave2("gcmr_retail_recreation")
 
 
 ```
-
-```{r, fig.height=6,fig.width=10,echo=TRUE, warning=FALSE, message=FALSE}
-plot_gcmr("gcmr_workplaces")
+```{r, fig.height=6,fig.width=10,echo=FALSE, warning=FALSE, message=FALSE}
+plot_gcmr_wave2("gcmr_workplaces")
 ```
 
-```{r, fig.height=6,fig.width=10,echo=TRUE, warning=FALSE, message=FALSE}
-plot_gcmr("gcmr_grocery_pharmacy")
+## Country comparing
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+library(splines)
+
+y="gcmr_retail_recreation"
+selected <- EUAdata
+if (y == "gcmr_workplaces" | y == "gcmr_grocery_pharmacy"){
+  selected <- selected %>% filter(!(weekdays(as.Date(date)) %in% c('Saturday','Sunday')))}
+selected <- selected %>% filter(!is.na(selected[,y]),(date > as.Date("2020-02-06")) & (date < as.Date("2020-07-15"))) %>% mutate(date = yday(date))
+
+selected <- selected %>% group_by(country)%>%ungroup()
+plot_spline <- {selected %>% 
+    ggplot(aes(x = as.Date(date, origin="2020-01-01"),y = gcmr_retail_recreation,col=country)) +
+    geom_point()}
+print(plot_spline)
+```
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+library(splines)
+library(MASS)
+
+model1 = glm(gcmr_retail_recreation ~  1 + ns(date, knots = c(60,100,140,180)),data = selected)
+
+model2 = glm(gcmr_retail_recreation ~ country + ns(date, knots = c(60,100,140,180)), data = selected)
+
+model3 = glm(gcmr_retail_recreation ~ -1 + country + country:ns(date, knots = c(60,100,140,180)), data = selected)
+```
+
+```{r, echo=TRUE, warning=FALSE, message=FALSE}
+model1
+model2
+model3
+```
+
+
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+anova(model1, model2, model3)
 ```
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(splines)
 
+y="gcmr_retail_recreation"
+selected <- EUAdata
+if (y == "gcmr_workplaces" | y == "gcmr_grocery_pharmacy"){
+  selected <- selected %>% filter(!(weekdays(as.Date(date)) %in% c('Saturday','Sunday')))}
+selected <- selected %>% filter(!is.na(selected[,y]),(date > as.Date("2020-07-16")) & (date < as.Date("2020-12-15"))) %>% mutate(date = yday(date))
+
+selected <- selected %>% group_by(country)%>%ungroup()
+plot_spline <- {selected %>% 
+    ggplot(aes(x = as.Date(date, origin="2020-01-01"),y = gcmr_retail_recreation,col=country)) +
+    geom_point()}
+print(plot_spline)
 ```
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(splines)
+library(MASS)
 
+model1 = glm(gcmr_retail_recreation ~  1 + ns(date, knots = c(60,100,140,180)),data = selected)
+
+model2 = glm(gcmr_retail_recreation ~ country + ns(date, knots = c(60,100,140,180)), data = selected)
+
+model3 = glm(gcmr_retail_recreation ~ -1 + country + country:ns(date, knots = c(60,100,140,180)), data = selected)
 ```
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
-
-```
-
-```{r, echo=FALSE, warning=FALSE, message=FALSE}
-
+model1
+model2
+model3
 ```
 
 ```{r, echo=FALSE, warning=FALSE, message=FALSE}
